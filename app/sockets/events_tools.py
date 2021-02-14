@@ -39,6 +39,7 @@ def set_colors(match_id):
                 has_color = False
 
                 for match_user in general_match["match_users_data"]:
+                    print(match_user)
                     if (match_user['color'] == color):
                         has_color = True
                         break
