@@ -42,9 +42,10 @@ def match_response(data):
 
         gd.load_users_data(users_data_raw)
         gd.load_match_users_data(match_users_data_raw)
+        gd.current_match = match_data
 
         print_queue.put(f'======= Match number {gd.current_match["id"]}')
-        print_queue.put(f'======= Status: {match_data["status"]}')
+        print_queue.put(f'======= Status: {gd.current_match["status"]}')
         gd.display_all_match_users()
 
         # Auto send user ready
@@ -52,7 +53,9 @@ def match_response(data):
     elif action == 'user_ready':
         print_queue.put(f'message received with {data}')
         match_user_ready = data['data']['match_user_data']
-        self.match_users_data[match_user_ready['id']] = match_user_ready
+        gd.match_users_data[match_user_ready['id']] = match_user_ready
+
+        gd.display_all_match_users()
 
 print_queue = Queue()
 input_queue = Queue()
@@ -84,6 +87,7 @@ output_thread.start()
 
 def make_request(method, url_slug, data):
     http_uri = 'http://localhost:5000/'
+    #http_uri = 'http://haveyouheard-game.herokuapp.com:5000/'
     headers = {'Content-Type': 'application/json'}
 
     if method == 'get':
@@ -131,6 +135,7 @@ class HyH(socketio.ClientNamespace):
 
         self.sio = sio
         self.sio.connect('http://localhost:5000')
+        #self.sio.connect('https://haveyouheard-game.herokuapp.com/socket.io/')
 
     def run(self):
         while self.screen:
@@ -153,8 +158,8 @@ class HyH(socketio.ClientNamespace):
         ## Create or find match
         match_info_received = False
         while not match_info_received:
-            create_or_join = input('Would you like to:\n C) Create a match\n J) Join an existing match\n')
-            if create_or_join == 'C':
+            create_or_join = input('Would you like to:\n c) Create a match\n j) Join an existing match\n')
+            if create_or_join == 'c':
                 print_queue.put('Alright, creating a match')
                 pload = {'user_data': self.gd.my_user_data, 'is_public': False }
                 r = make_request('post', 'create_match', pload)
@@ -162,7 +167,7 @@ class HyH(socketio.ClientNamespace):
                     self.gd.current_match = r.json()['data']
                     match_info_received = True
 
-            elif create_or_join == 'J':
+            elif create_or_join == 'j':
                 match_id = input('Type the match number you''d like to join: ')
                 pload = {'id': match_id }
                 r = make_request('get', 'get_match', pload)
@@ -174,7 +179,6 @@ class HyH(socketio.ClientNamespace):
 
             else:
                 print_queue.put('Please, choose between C or J')
-        print_queue.put(f'Match info: {self.gd.current_match}')
         return self.match_lobby
 
     def match_lobby(self):
@@ -183,17 +187,20 @@ class HyH(socketio.ClientNamespace):
         if r.status_code == 200:
             print_queue.put(r.json())
             match_user = r.json()['data']
-            print_queue.put(match_user)
             match_users_list = [ match_user ]
 
             pload = {'user_data': self.gd.my_user_data, 'match_users_data': match_users_list, 'match_data': self.gd.current_match }
             self.sio.emit('join', json.dumps(pload))
         else:
             print_queue.put('Match "{match_id}" not found')
+        while self.gd.current_match['status'] == 'finding_users':
+            ready = input('Are you ready? (y/n)')
+            if ready == 'y':
+                self.gd.my_match_user_data['ready'] = True
+                self._user_is_ready()
 
     def _user_is_ready(self):
-        self.my_match_user_data['ready'] = True
-        data = {'match_user_data': self.my_match_user_data, 'match_data': self.gd.current_match }
+        data = {'match_user_data': self.gd.my_match_user_data, 'match_data': self.gd.current_match }
         pload = {'action': 'user_ready', 'data': data }
         self.sio.emit('match_event', json.dumps(pload))
 
