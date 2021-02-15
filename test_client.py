@@ -58,6 +58,8 @@ class GameData:
         self.my_user_data = None
         self.my_match_user_data = None
 
+        self.game_started = False
+
     def load_users_data(self, users_json):
         for user in users_json:
             self.users_data[user['id']] = user
@@ -172,14 +174,13 @@ class HyH(socketio.ClientNamespace):
             if input_ready:
                 ready = sys.stdin.readline()
                 self.display.clear_question()
-                if self.gd.current_match['status'] == 'finding_users':
-                    if ready == '\n':
-                        self.gd.my_match_user_data['ready'] = not self.gd.my_match_user_data['ready']
-                        self.emit_user_readiness()
-                    else:
-                        pass
-                elif self.gd.current_match['status'] == 'starting_game':
+                if self.gd.my_match_user_data is not None and ready == '\n':
+                    self.gd.my_match_user_data['ready'] = not self.gd.my_match_user_data['ready']
+                    self.emit_user_readiness()
+                else:
                     pass
+            if self.gd.game_started:
+                return self.selecting_chars
 
     def emit_user_readiness(self):
         data = {'match_user_data': self.gd.my_match_user_data, 'match_data': self.gd.current_match }
@@ -187,7 +188,8 @@ class HyH(socketio.ClientNamespace):
         self.sio.emit('match_event', json.dumps(pload))
 
     def selecting_chars(self):
-        pass
+        print_queue.put('Selecting Characters')
+        printer.go_print()
 
 
 print_queue = Queue()
@@ -208,7 +210,7 @@ def my_message(data):
     pass
 
 @sio.event
-def disconnect(self):
+def disconnect():
     print_queue.put('disconnected from server')
     printer.go_print()
 
@@ -218,9 +220,6 @@ def match_response(data):
     action = data['action']
 
     if action == 'join_match':
-        print(f'received {action}')
-        print_queue.put(f'message received with {data}')
-
         match_data = data['data']['match_data']
         users_data_raw = data['data']['users_data']
         match_users_data_raw = data['data']['match_users_data']
@@ -232,8 +231,8 @@ def match_response(data):
         gd.current_match = match_data
 
     elif action == 'user_ready':
-        print(f'received {action}')
-        print_queue.put(f'message received with {data}')
+        #print(f'received {action}')
+        #print_queue.put(f'message received with {data}')
 
         match_data = data['data']['match_data']
 
@@ -264,6 +263,22 @@ def match_response(data):
         if gd.current_match['status'] == 'starting_game':
             # Emit status
             print('Starting...', flush=True)
+            data = {'match_data': gd.current_match }
+            pload = {'action': 'check_match_status', 'data': data }
+            sio.emit('user_event', json.dumps(pload))
+
+@sio.event
+def user_response(data):
+    action = data['action']
+
+    print(f'received {action}')
+    if action == 'check_match_status':
+        status = data['data']['status']
+        if status == 'starting_game':
+            printer.clear_question()
+            gd.game_started = True
+
+
 
 input_queue = Queue()
 class InputHandler(threading.Thread):
