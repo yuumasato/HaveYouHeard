@@ -1,7 +1,9 @@
 import json
 from queue import Queue
 import requests
+import select
 import socketio
+import sys
 import threading
 import time
 
@@ -163,18 +165,21 @@ class HyH(socketio.ClientNamespace):
         return self.match_lobby
 
     def match_lobby(self):
-        while True:
+        game_started = False
+        while not game_started:
             # Hanging in the Lobby
-            if self.gd.current_match['status'] == 'finding_users':
-                ready = input()
+            input_ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+            if input_ready:
+                ready = sys.stdin.readline()
                 self.display.clear_question()
-                if ready == '':
-                    self.gd.my_match_user_data['ready'] = not self.gd.my_match_user_data['ready']
-                    self.emit_user_readiness()
-                else:
+                if self.gd.current_match['status'] == 'finding_users':
+                    if ready == '\n':
+                        self.gd.my_match_user_data['ready'] = not self.gd.my_match_user_data['ready']
+                        self.emit_user_readiness()
+                    else:
+                        pass
+                elif self.gd.current_match['status'] == 'starting_game':
                     pass
-            elif self.gd.current_match['status'] == 'starting_game':
-                pass
 
     def emit_user_readiness(self):
         data = {'match_user_data': self.gd.my_match_user_data, 'match_data': self.gd.current_match }
