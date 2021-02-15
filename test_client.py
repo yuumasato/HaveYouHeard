@@ -40,9 +40,10 @@ class DisplayUpdater(threading.Thread):
     def go_print(self):
         self.can_print.set()
 
-    def add_question(self, question):
+    def add_question(self, question, print_now):
         self.question = question
-        self.go_print()
+        if print_now:
+            self.go_print()
 
     def clear_question(self):
         self.question = None
@@ -51,7 +52,7 @@ class GameData:
     def __init__(self):
         self.users_data = {}
         self.match_users_data = {}
-        self.current_match = None
+        self.current_match = {}
         self.my_user_data = None
         self.my_match_user_data = None
 
@@ -73,7 +74,9 @@ class GameData:
         else:
             print_queue.put(f'\t\u001b[38;5;{COLORS[match_user["color"]]}m{user["username"]}\u001b[0m')
 
-    def display_all_match_users(self):
+    def display_match(self):
+        print_queue.put(f'======= Match number {self.current_match["id"]}')
+        print_queue.put(f'======= Status: {self.current_match["status"]}')
         for match_user in self.match_users_data.values():
             self.display_match_user(match_user)
 
@@ -95,9 +98,11 @@ class HyH(socketio.ClientNamespace):
 
     def get_data(self):
         while True:
-            self.display.add_question('Type your user name: ')
-            username = input()
-            self.display.clear_question()
+            username = ""
+            while username == "":
+                self.display.add_question('Type your user name: ', True)
+                username = input()
+                self.display.clear_question()
 
             pload = { 'username': username, 'country': 'Brazil' }
             r = make_request('post', 'add_user', pload)
@@ -112,9 +117,9 @@ class HyH(socketio.ClientNamespace):
 
     def get_matched(self):
         ## Create or find match
-        match_info_received = False
-        while not match_info_received:
-            self.display.add_question('Would you like to:\n c) Create a match\n j) Join an existing match')
+        got_matched = False
+        while not got_matched:
+            self.display.add_question('Would you like to:\n c) Create a match\n j) Join an existing match', True)
             create_or_join = input()
             self.display.clear_question()
             if create_or_join == 'c':
@@ -124,58 +129,60 @@ class HyH(socketio.ClientNamespace):
                 r = make_request('post', 'create_match', pload)
                 if r.status_code == 200:
                     self.gd.current_match = r.json()['data']
-                    match_info_received = True
 
             elif create_or_join == 'j':
-                self.display.add_question('Type the match number you''d like to join:')
+                self.display.add_question('Type the match number you''d like to join:', True)
                 match_id = input()
                 self.display.clear_question()
                 pload = {'id': match_id }
                 r = make_request('get', 'get_match', pload)
                 if r.status_code == 200:
                     self.gd.current_match = r.json()['data']
-                    match_info_received = True
                 else:
                     print_queue.put(f'Match "{match_id}" not found')
+                    continue
                 self.display.go_print()
 
             else:
                 print_queue.put('Please, choose between C or J')
                 self.display.go_print()
+                continue
+
+            # Socket join the match
+            pload = {'user_data': self.gd.my_user_data, 'match_data': self.gd.current_match, 'is_player': True}
+            r = make_request('post', 'join_match', pload)
+            if r.status_code == 200:
+                match_user = r.json()['data']
+                match_users_list = [ match_user ]
+
+                pload = {'user_data': self.gd.my_user_data, 'match_users_data': match_users_list, 'match_data': self.gd.current_match }
+                self.sio.emit('join', json.dumps(pload))
+                got_matched = True
+            else:
+                print_queue.put(f'Could not join match "{match_id}"')
         return self.match_lobby
 
     def match_lobby(self):
-        pload = {'user_data': self.gd.my_user_data, 'match_data': self.gd.current_match, 'is_player': True}
-        r = make_request('post', 'join_match', pload)
-        if r.status_code == 200:
-            print_queue.put(r.json())
-            self.display.go_print()
-            match_user = r.json()['data']
-            match_users_list = [ match_user ]
-
-            pload = {'user_data': self.gd.my_user_data, 'match_users_data': match_users_list, 'match_data': self.gd.current_match }
-            self.sio.emit('join', json.dumps(pload))
-        else:
-            print_queue.put(f'Could not join match "{match_id}"')
-            return self.get_matched
-        while self.gd.current_match['status'] == 'finding_users':
-            if self.gd.my_match_user_data['ready']:
-                self.display.add_question('Still ready? (y/n)')
-            elif:
-                self.display.add_question('Are you ready? (y/n)')
-            ready = input()
-            self.display.clear_question()
-            if ready == 'y':
-                self.gd.my_match_user_data['ready'] = True
-                self.emit_user_readiness()
-            elif ready == 'n':
-                self.gd.my_match_user_data['ready'] = False
-                self.emit_user_readiness()
+        while True:
+            # Hanging in the Lobby
+            if self.gd.current_match['status'] == 'finding_users':
+                ready = input()
+                self.display.clear_question()
+                if ready == '':
+                    self.gd.my_match_user_data['ready'] = not self.gd.my_match_user_data['ready']
+                    self.emit_user_readiness()
+                else:
+                    pass
+            elif self.gd.current_match['status'] == 'starting_game':
+                pass
 
     def emit_user_readiness(self):
         data = {'match_user_data': self.gd.my_match_user_data, 'match_data': self.gd.current_match }
         pload = {'action': 'user_ready', 'data': data }
         self.sio.emit('match_event', json.dumps(pload))
+
+    def selecting_chars(self):
+        pass
 
 
 print_queue = Queue()
@@ -206,28 +213,52 @@ def match_response(data):
     action = data['action']
 
     if action == 'join_match':
+        print(f'received {action}')
+        print_queue.put(f'message received with {data}')
+
         match_data = data['data']['match_data']
         users_data_raw = data['data']['users_data']
         match_users_data_raw = data['data']['match_users_data']
 
         gd.load_users_data(users_data_raw)
         gd.load_match_users_data(match_users_data_raw)
+
+        old_current_match = gd.current_match
         gd.current_match = match_data
 
-        print_queue.put(f'======= Match number {gd.current_match["id"]}')
-        print_queue.put(f'======= Status: {gd.current_match["status"]}')
-        gd.display_all_match_users()
-        printer.go_print()
-
-        # Auto send user ready
-        #self._user_is_ready()
     elif action == 'user_ready':
+        print(f'received {action}')
         print_queue.put(f'message received with {data}')
+
+        match_data = data['data']['match_data']
+
+        old_current_match = gd.current_match
+        gd.current_match = match_data
         match_user_ready = data['data']['match_user_data']
         gd.match_users_data[match_user_ready['id']] = match_user_ready
 
-        gd.display_all_match_users()
+    if gd.current_match['status'] == 'finding_users':
+        if old_current_match.get('status', '') == 'starting_game':
+            print_queue.put('Start cancelled!')
+        if not gd.my_match_user_data or gd.my_match_user_data['ready'] == False:
+            printer.add_question('Ready? (Enter)', False)
+        else:
+            printer.add_question('Not ready? (Enter)', False)
+        gd.display_match()
         printer.go_print()
+    elif gd.current_match['status'] == 'starting_game':
+        printer.add_question('Not ready? (Enter)', False)
+        # Start count down
+        print('Count down', flush=True)
+        for i in range(5, -1, -1):
+            if gd.current_match['status'] == 'starting_game':
+                print(f'{i}', end=' ', flush=True)
+                time.sleep(1)
+            elif gd.current_match['status'] == 'finding_users':
+                break
+        if gd.current_match['status'] == 'starting_game':
+            # Emit status
+            print('Starting...', flush=True)
 
 input_queue = Queue()
 class InputHandler(threading.Thread):
