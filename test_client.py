@@ -93,8 +93,8 @@ class HyH(socketio.ClientNamespace):
         self.display = printer
 
         self.sio = sio
-        self.sio.connect('http://localhost:5000')
-        #self.sio.connect('https://haveyouheard-game.herokuapp.com/socket.io/')
+        self.sio.connect('http://192.168.0.187:5000/socket-io/')
+        #self.sio.connect('https://haveyouheard.rj.r.appspot.com/socket.io/')
 
     def run(self):
         while self.screen:
@@ -294,8 +294,8 @@ class InputHandler(threading.Thread):
                 time.sleep(1)
 
 def make_request(method, url_slug, data):
-    http_uri = 'http://localhost:5000/'
-    #http_uri = 'http://haveyouheard-game.herokuapp.com:5000/'
+    http_uri = 'http://192.168.0.187:5000/'
+    #http_uri = 'https://haveyouheard-game.herokuapp.com/'
     headers = {'Content-Type': 'application/json'}
 
     if method == 'get':
