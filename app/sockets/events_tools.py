@@ -1,7 +1,6 @@
 import json
 from .. import db
 import random
-import asyncio
 from . import events
 
 general_matches = []

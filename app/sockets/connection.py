@@ -4,13 +4,11 @@ from flask_socketio import emit, disconnect
 from flask import Flask, session, request, copy_current_request_context
 from .. import socketio
 
-thread = None
-thread_lock = Lock()
 
 def background_thread():
     """Example of how to send server generated events to clients."""
     count = 0
-    while True:
+    while False:
         socketio.sleep(10)
         count += 1
         socketio.emit('user_response',
@@ -42,10 +40,10 @@ def ping_pong():
 @socketio.on('connect')
 def test_connect():
 
-    global thread
-    with thread_lock:
-        if thread is None:
-            thread = socketio.start_background_task(background_thread)
+    #global thread
+    #with thread_lock:
+    #    if thread is None:
+    #        thread = socketio.start_background_task(background_thread)
     # received and it is safe to disconnect
     emit('user_event',
          {'action': 'connection',
