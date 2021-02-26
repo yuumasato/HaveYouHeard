@@ -3,7 +3,7 @@ from flask_socketio import SocketIO
 import psycopg2
 from flask_cors import CORS
 
-socketio = SocketIO()
+socketio = SocketIO(logger=True, engineio_logger=True)
 
 def create_app(debug=False):
     """Create an application."""
