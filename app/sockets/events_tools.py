@@ -106,17 +106,17 @@ def process_vote_selection(form):
         if(general_match['match_data']['id'] == form['data']['match_data']['id']):
             for round_data in general_match['rounds_data']:
                 if(round_data['round'] == form['data']['vote_data']['round']):
-                    if(form['data']['vote_data']['id_user'] == -1):
-                        check_votes_count(form['data']['match_data']['id'], form['data']['vote_data']['round'], 1)
-                    else:
+                    round_data['total_votes'] = round_data.get('total_votes', 0) + 1
+                    # This is  not a timeouted vote
+
+                    if(form['data']['vote_data']['id_user'] != -1):
                         for fulfillment in round_data['fulfillments']:
                             if(fulfillment['id_user'] == form['data']['vote_data']['id_user']):
                                 fulfillment['votes'] = fulfillment['votes'] + 1
-                                check_votes_count(form['data']['match_data']['id'], form['data']['vote_data']['round'], 0)
-                                return
+                    check_votes_count(form['data']['match_data']['id'], form['data']['vote_data']['round'])
+                    return
 
-def check_votes_count(match_id, round, null_votes):
-    total_votes = null_votes
+def check_votes_count(match_id, round):
     total_users = 0
     round_winner = {}
     for general_match in general_matches:
@@ -124,16 +124,16 @@ def check_votes_count(match_id, round, null_votes):
             total_users = len(general_match['match_users_data'])
             for round_data in general_match['rounds_data']:
                 if(round_data['round'] == round):
-                    for fulfillment in round_data['fulfillments']:
-                        total_votes = total_votes + fulfillment['votes']
-                        if(round_winner == {} and fulfillment['votes'] != 0):
-                            round_winner = fulfillment
-                        else:
-                            if(round_winner != {}):
-                                if(round_winner['votes'] < fulfillment['votes']):
-                                    round_winner = fulfillment
-                    round_data['round_winner'] = round_winner
-                    if(total_votes == total_users):
+                    if(round_data['total_votes'] == total_users):
+                        for fulfillment in round_data['fulfillments']:
+                            if(round_winner == {} and fulfillment['votes'] != 0):
+                                round_winner = fulfillment
+                            else:
+                                if(round_winner != {}):
+                                    if(round_winner['votes'] < fulfillment['votes']):
+                                        round_winner = fulfillment
+                        round_data['round_winner'] = round_winner
+
                         data = {}
                         data['round_winner'] = round_data['round_winner']
                         data['match_data'] = general_match['match_data']
