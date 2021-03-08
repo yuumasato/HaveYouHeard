@@ -119,6 +119,7 @@ def process_vote_selection(form):
 def check_votes_count(match_id, round):
     total_users = 0
     round_winner = {}
+    first_fulfillment = {'fulfillment_delay': 22.0} # Max fulfilment delay is 20s
     for general_match in general_matches:
         if(general_match['match_data']['id'] == match_id):
             total_users = len(general_match['match_users_data'])
@@ -126,12 +127,14 @@ def check_votes_count(match_id, round):
                 if(round_data['round'] == round):
                     if(round_data['total_votes'] == total_users):
                         for fulfillment in round_data['fulfillments']:
-                            if(round_winner == {} and fulfillment['votes'] != 0):
+                            if(round_winner != {} and round_winner['votes'] < fulfillment['votes']):
                                 round_winner = fulfillment
-                            else:
-                                if(round_winner != {}):
-                                    if(round_winner['votes'] < fulfillment['votes']):
-                                        round_winner = fulfillment
+                            if(first_fulfillment['fulfillment_delay'] > fulfillment['fulfillment_delay']):
+                                first_fulfillment = fulfillment
+
+                        # If noboby voted, the first received fulfillment wins
+                        if round_winner == {}:
+                            round_winner = first_fulfillment
                         round_data['round_winner'] = round_winner
 
                         data = {}
